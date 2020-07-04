@@ -1,0 +1,423 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="UTF-8">
+		<meta name="viewport" content="user-scalable=no">
+		<title>♦Frog Jump!♦</title>
+		<script src="Sprite.js"></script>
+		<style>
+			canvas {
+				position: absolute;
+				top: 0px;
+				bottom: 0px;
+				left: 0px;
+				right: 0px;
+				margin: auto;
+			}
+		</style>
+	</head>
+	<body>
+		<script>
+			//variáveis do jogo
+			var canvas, ctx, ALTURA, LARGURA, pulosMax = 3, VELOCIDADE = 6,
+			estadoAtual, recorde, img,
+			//variável que define a cada pontuação que uma fase é passada
+			nextFase = [5, 10, 15, 20, 30, 50],
+			faseAtual = 0,
+			//Esse objeto trata de realizar o desaparecimento e aparecimento do texto que informa o nível em que o jogador está, após passar determinadas pontuações
+			mostrarNovaFase = {
+				texto: "",
+				opacidade: 0,
+
+				aparecer: function(dt){
+					var aparecerId = setInterval(function() {
+						if (mostrarNovaFase.opacidade < 1){
+							mostrarNovaFase.opacidade += 0.01;
+						}
+						else{
+							clearInterval(aparecerId)
+						}
+					}, 10 * dt);
+				},
+				desaparecer: function(dt){
+					var desaparecerId = setInterval(function() {
+						if (mostrarNovaFase.opacidade > 0){
+							mostrarNovaFase.opacidade -= 0.01;
+						}
+						else{
+							clearInterval(desaparecerId)
+						}
+					}, 10 * dt);
+				}
+			},
+
+			//Aqui há a representação de estados do jogo por números, vai ajudar na questão de troca de telas.
+			estados = {
+				jogar: 0,
+				jogando: 1,
+				perdeu: 2
+			},
+
+			//Variável que vai criar o chão do jogo, e alguns métodos pra ela.
+			chao = {
+				y: 530,
+				x: 0,
+				altura: 70,
+
+				//Esse método atua como função de atualizar a posição do X do chão, zera-la para evitar uma diminuição infinita de seu X.
+				atualizeira: function() {
+					this.x -= VELOCIDADE;
+					if (this.x <= -30){
+						this.x += 30
+					}
+				},
+
+				//esse método como o nome sugere, ajuda a desenhar o chão. o THIS aplicado serve de referencia a dizer que vai usar o atributo do que vem após o ponto, no caso usa atributo do X e do Y do chão para desenhá-lo, posteriormente.
+				desenhar: function() {
+						spriteChao.desenhar(this.x, this.y);
+						spriteChao.desenhar(this.x + spriteChao.largura, this.y);
+				},
+			},
+
+
+			//Variável que vai criar o fundo do jogo, e alguns métodos pra ela.
+			fundo = {
+				y: 0,
+				x: 0,
+				altura: 600,
+
+				//Esse método atua como função de atualizar a posição do X do fundo, zera-lo para evitar uma diminuição infinita de seu X.
+				atualizeira: function() {
+					this.x -= 1;
+					if (this.x <= -600){
+						this.x += 600
+					}
+				},
+				//esse método como o nome sugere, ajuda a desenhar o fundo. o THIS aplicado serve de referencia a dizer que vai usar o atributo do que vem após o ponto, no caso usa atributo do X e do Y do chão para desenhá-lo, posteriormente.
+				desenhar: function() {
+					spriteFundo.desenhar(this.x, this.y);
+					spriteFundo.desenhar(this.x + spriteFundo.largura, this.y);
+				},
+				// esse método reseta a posição do fundo para ao reiniciar o jogo estar como na primeira vez;
+				reset: function () {
+					this.x = 0
+				},
+			},
+
+
+			//Aqui tem-se a variável que mexerá com o personagem do jogo, o qual o usuário vai manipular, basicamente. Mesmo esquema da variável do chão. Note que no atributo de altura e largura existe a referencia a altura e largura de outra variável, a spriteBoneco (que está no arquivo Sprite.js) que basicamente são a posição e as dimensões X e Y da imagem do boneco/bloco, esses dois são a mesma coisa.
+			bloco = {
+				x: 50,
+				y: 0,
+				altura: spriteBoneco.altura,
+				largura: spriteBoneco.largura,
+				gravidade: 1.25,
+				VELOCIDADE: 0,
+				ForcaDoSalto: 19.5,
+				quantPulos: 0,
+				score: 0,
+				vidas: 3,
+				colidindo: false,
+
+				//Esse método tem a função de atualizar a posição do boneco, e que ao atingir a posição do chão ele para, descresce pois na canvas o eixo Y começa por cima. Além de resetar, quando chegar ao chão, a quantidade de pulos possíveis.
+				atualizar: function(){
+					this.VELOCIDADE += this.gravidade;
+					this.y += this.VELOCIDADE;
+					if (this.y > chao.y - this.altura && estadoAtual != estados.perdeu){
+						this.y = chao.y - this.altura;
+						this.quantPulos = 0;
+						this.VELOCIDADE = 0;
+					};
+				},
+
+				//Esse método como também já sugere mexe com os pulos do boneco, forçando que no máximo sejam dados 3 antes de tocar o chão novamente.
+				pular: function(){
+					if(this.quantPulos < pulosMax){
+						this.VELOCIDADE = -this.ForcaDoSalto;
+						this.quantPulos++
+					}
+				},
+
+				//Esse método como também já sugere ele reseta coisas do boneco, como a velocidade, sua posição (na parte de cima da canvas), suas vidas e por fim sua pontuação, assim que se inicia o jogo novamente. Além disso, nesse mesmo estado de resetar existe o armazenamento do recorde do usuário na própria máquina, com o auxílio do localStorage. Mais informações sobre essa API em: https://tableless.com.br/guia-f%C3%A1cil-sobre-usar-localstorage-com-javascript/
+				reset: function(){
+					this.VELOCIDADE = 0;
+					this.y = 0;
+					if(this.score > recorde){
+						localStorage.setItem("recorde", this.score);
+						recorde = this.score
+					}
+					this.vidas = 3;
+					this.score = 0;
+					VELOCIDADE = 6;
+					faseAtual = 0;
+					this.gravidade = 1.25
+				},
+
+				//Esse método como também já sugere ele auxilia no desenhar o boneco, de acordo com as características da imagem, novamente no arquivo Sprite.js.
+				desenhar: function(){
+					spriteBoneco.desenhar(this.x, this.y);
+				},
+			},
+
+			//Essa variável será para criar os objetos que o boneco irá colidir para perder vidas e o jogo. Mesma lógica aplicada a variável do chão e boneco. No caso, trabalhado foi com vetores para mudar a cor dos obstaculos.
+			obstaculos = {
+				_obs: [],
+				_scored: false,
+				cores: ["#FF0700", "#FF7600", "#01939A", "#3914AF", "#FBFE00", "#25D500"],
+				tempoInsere: 0,
+
+				//Esse método como também já sugere ele auxilia a inserir os obstaculos, trabalhando com a posição em que aparecerá, a largura, a altura e a cor do mesmos. É usado o "push" para acrescentar os valores ao vetor dos obstaculos e o objeto global Math para criar aleatoriamente as características deles.
+				inserir: function(){
+					this._obs.push({
+						x: LARGURA,
+						largura: 50,
+						altura: 30 + Math.floor(120 * Math.random()),
+						cor: this.cores[Math.floor(6 * Math.random())]
+					});
+
+					this.tempoInsere = 30 + Math.floor(21 * Math.random());
+				},
+
+				//Esse método como também já sugere ele auxilia a atualizar características dos obstaculos.
+				atualizar: function(){
+
+					//nesse if/else há a lógica de quando irá aparecer um novo obstaculos, ou seja, o espaçamento entre eles.
+					if (this.tempoInsere == 0){
+						this.inserir();
+					}
+					else{
+						this.tempoInsere--;
+					}
+
+					//Esse "for" serve para trabalhar com todos os obstaculos a serem criados
+					for(var i = 0, tam = this._obs.length; i < tam; i++){
+						//Esse if serve para acertar quando o boneco morre e perde-se o jogo.
+						if (bloco.vidas == 0){
+							estadoAtual = estados.perdeu;
+						}
+						// Essa parte serve para mover todos os obstaculos para esquerda,ou seja, em direção ao boneco.
+						var obj = this._obs[i];
+						obj.x -= VELOCIDADE;
+
+						//Essa parte serve para determinar se o boneco perde uma vida e/ou perde o jogo. A lógica aplicada é a de que se o boneco colide com o Y ou o X de cada bloco naquela largura e altura definida ele perde a vida/jogo. Na sequência: boneco estar colidindo ou não com o obstaculos, o boneco não estar horizontalmente encostando no obstaculo pelo lado esquerdo, o mesmo anterior só que pela direita e por fim o boneco não estar colidindo com o obstaculo verticalmente por cima.
+						if (!bloco.colidindo && bloco.x < obj.x + obj.largura && bloco.x + bloco.largura >= obj.x && bloco.y + bloco.altura >= chao.y - obj.altura){
+
+							//Das linhas 142 até 153 é o trabalhar do perder de vidas e o mostrar dela, no canto superior direito. E ao fim delas mostrar a tela de perder o jogo. O método setTimeout serve para dar um atraso após o boneco colidir com o obstaculo, isso serve para poder voltar a colidir novamente, até, é claro,as vidas acabarem. Quando isso ocorrer obviamente se perder o jogo.
+							bloco.colidindo = true;
+
+							setTimeout(function() {
+								bloco.colidindo = false;
+							}, 500);
+							if (bloco.vidas >= 1){
+								bloco.vidas -= 1
+							}
+						}
+
+						//Aqui informa que se o obstaculo passa o começo da canvas, no caso em 0, ele consegue um ponto a mais.
+						else if (obj.x <= 0 && !obj._scored){
+							bloco.score++;
+							obj._scored = true;
+
+							if (faseAtual < nextFase.length && bloco.score == nextFase[faseAtual]){
+								goNextFase();
+							}
+						}
+						//E por fim aqui remove o elemento que já deixou a canvas pela esquerda.
+						else if(obj.x <= -obj.largura){
+							this._obs.splice(i, 1);
+							tam--;
+							i--;
+						}
+					}
+				},
+
+				//Claramente esse método auxilia no resetar do vetor de obstaculos, servirá para quando o jogador quiser iniciar novamente o jogo.
+				limpa: function(){
+						this._obs = [];
+				},
+
+				//Esse método como também já sugere ele auxilia a desenhar os obstaculos, no caso são retângulos das mais variadas medidas.
+				desenhar: function(){
+					for(var i = 0, tam = this._obs.length; i < tam; i++){
+						var obs = this._obs[i];
+						ctx.fillStyle = obs.cor;
+						ctx.fillRect(obs.x, chao.y - obs.altura, obs.largura, obs.altura);
+					}
+				}
+			};
+
+
+			//Funções!!! Essas safadinhas que irão executar todo o código na prática ^^ .
+
+			//Nessa função tem-se o clicar com o rato para que o usuário jogue, inicie ou reinicie o jogo.
+			function clica(qualquer){
+
+				//Aqui se o usuário estiver jogando e clicar com o mouse o boneco vai pular.
+				if(estadoAtual == estados.jogando){
+					bloco.pular();
+				}
+
+				// Aqui se o estado for a tela inicial e o usuário clicar com o rato ele inciará o jogo.
+				else if (estadoAtual == estados.jogar){
+					estadoAtual = estados.jogando;
+				}
+
+				//Aqui se o usuário perder o jogo os obstaculos serão limpos, a posição e etc do boneco resetada e claro, pagina inicial para iniciar o jogo novamente, se assim o usuário quiser.
+				else if (estadoAtual == estados.perdeu && bloco.y >= 2 * ALTURA){
+					estadoAtual = estados.jogar;
+					obstaculos.limpa();
+					bloco.reset();
+					fundo.reset();
+				}
+			}
+
+			function goNextFase () {
+				VELOCIDADE++
+				faseAtual++
+				bloco.vidas++
+
+				if(faseAtual == 4){
+					bloco.gravidade *= 0.7
+				}
+
+				mostrarNovaFase.texto = "Level " + faseAtual;
+				mostrarNovaFase.aparecer(0.4)
+
+				setTimeout(function(){
+					mostrarNovaFase.desaparecer(0.4)
+				}, 800)
+			}
+
+			//A função colossal, rainha das rainhas, toda poderosa. Nela que será criado todo esse contexto anteriormente descrito.
+			function main() {
+
+				//basicamente detecta a resolução da tela do usuário e limita o jogo a 600px, tanto em largura quanto em altura.
+				ALTURA = window.innerHeigth;
+				LARGURA = window.innerWidth;
+
+				if (LARGURA >= 600){
+					LARGURA = 600;
+					ALTURA = 600;
+				}
+
+				//Aqui até criado o canvas do jogo, com todas as especificações com largura, altura, estilo de borda
+				canvas = document.createElement("canvas");
+				canvas.width = LARGURA;
+				canvas.height = ALTURA;
+				canvas.style.border = "1px solid #000";
+
+				//O ctx é o contexto, retorna um objeto que fornece métodos e propriedades para desenhar na tela, no caso 2d, que é usados ​​para desenhar texto, linhas, caixas, círculos e etc, na tela do canvas.
+				ctx = canvas.getContext("2d");
+
+				//adiciona o canvas para ser trabalhado.
+				document.body.appendChild(canvas);
+
+				//Ao clicar com o mouse interage com o canvas.
+				document.addEventListener("mousedown", clica);
+
+				//Mostra a tela de inicio do jogo.
+				estadoAtual = estados.jogar;
+
+				//Armazena o recorde do jogador no dispositivo que o mesmo jogou.
+				recorde = localStorage.getItem("recorde");
+
+				//Se não existir recorde essa condição força o valor a ser 0.
+				if (recorde == null){
+					recorde = 0;
+				}
+
+				//Insere o arquivo de imagem, no caso as imagens que preferi imbutir num arquivo só.
+				img = new Image();
+
+				//define o local onde está o arquivo das imagens.
+				img.src = "imagens/imagensdojogo.png"
+
+				//executa o jogo
+				roda();
+			}
+
+			//essa função chama justamente o início ou novo início do jogo
+			function roda() {
+				atualizar();
+				desenha();
+				window.requestAnimationFrame(roda);
+			}
+
+			//função que atualiza os principais objetos do jogo, além de seus atributos, como atualizar os objetos para serem criados, ou o chão a ser criado. Também limpar os obstáculos, se for o caso de perder o jogo.
+			function atualizar() {
+				bloco.atualizar();
+				if (estadoAtual == estados.jogando){
+					obstaculos.atualizar();
+					chao.atualizeira();
+					fundo.atualizeira();
+				}
+				else if (estadoAtual == estados.perdeu){
+					obstaculos.limpa();
+				}
+			}
+
+			//Essa função define os desenhos na tela do jogo, todos eles.
+			function desenha() {
+
+				//Desenha o fundo do jogo nas coordenadas em parênteses
+				fundo.desenhar(0, 0);
+
+				//Desenha o chão do jogo nas coordenadas em parênteses
+				chao.desenhar(0, 520)
+
+				//Desenha o boneco, no caso o sapo
+				bloco.desenhar();
+
+				//Define e desenha a cor, tamanho e fonte da pontuação e vidas, respectivamente
+				ctx.fillStyle = "#800080";
+				ctx.font = "50px Arial";
+				ctx.fillText(bloco.score, 30, 68);
+				ctx.fillText(bloco.vidas, 540, 68);
+
+
+
+				//Se o jogo estiver na tela inicial de jogar a imagem estará no centro da tela dando a instrução de que se o usuário quiser jogar denovo ele deve clicar.
+				if (estadoAtual == estados.jogar){
+					jogar.desenhar(LARGURA/2 - jogar.largura/2, ALTURA/2 - jogar.altura/2)
+				}
+				//Se o usuário tiver perdido tem seu contexto salvo.
+				else if (estadoAtual == estados.perdeu){
+					ctx.save();
+
+					//Se o usuário tiver batido o recorde anterior é exibido a imagem que mostra que ele teve um novo recorde, além da pontuação, de acordo com as coordenadas em ctx.fillText e claro, sua cor.
+					if (bloco.score > recorde){
+						novoRecorde.desenhar(LARGURA/2 - novoRecorde.largura/2, ALTURA/2 - novoRecorde.altura/2);
+						if (bloco.score < 100){
+							ctx.fillText(bloco.score, 415, 330);
+						}
+						else{
+							ctx.fillText(bloco.score, 392, 330);
+						}
+						ctx.fillStyle = "#800080";
+					}
+
+					//A mesma explicação anterior, exceto a imagem diferente e, no caso, não é mostrado o recorde e sim a pontuação atingida pelo usuário.
+					else if(bloco.score <= recorde){
+						perder.desenhar(LARGURA/2 - perder.largura/2, ALTURA/2 - perder.altura/2);
+						if(bloco.score < 100){
+							ctx.fillText(bloco.score, 400, 440);
+						}
+						else{
+							ctx.fillText(bloco.score, 384, 440);
+						}
+						ctx.fillStyle = "#800080";
+					}
+				}
+
+				//Enquanto o usuário estiver jogando é criado novos obstaculos.
+				else if (estadoAtual == estados.jogando){
+					obstaculos.desenhar();
+				}
+				ctx.fillStyle = "rgba(0, 0, 0, " + mostrarNovaFase.opacidade + ")";
+				ctx.fillText(mostrarNovaFase.texto, canvas.width / 2 - ctx.measureText(mostrarNovaFase.texto).width / 2, canvas.height / 3);
+			}
+			// chama-se a soberana(função main), executará todos os dados do jogo.
+			main();
+		</script>
+	</body>
+</html>
